@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
-import 'package:match3_puzzle/core/constants/design_constants.dart';
-import 'package:match3_puzzle/features/game/domain/models/tile_model.dart';
+import '../../../../core/constants/design_constants.dart';
+import '../../domain/enums/tile_type.dart';
+import '../../domain/models/tile_model.dart';
+
 
 /// Renders a single tile.
 ///

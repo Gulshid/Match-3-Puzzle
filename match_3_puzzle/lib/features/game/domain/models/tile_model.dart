@@ -1,4 +1,5 @@
-import 'package:match3_puzzle/features/game/domain/enums/tile_type.dart';
+
+import '../enums/tile_type.dart';
 
 /// A single tile on the board.
 ///

@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
-import 'package:match3_puzzle/features/game/application/providers/board_provider.dart';
-import 'package:match3_puzzle/features/game/presentation/widgets/grid_widget.dart';
+import '../../application/providers/board_provider.dart';
+import '../widgets/grid_widget.dart';
+
 
 class GameScreen extends ConsumerWidget {
   const GameScreen({super.key});

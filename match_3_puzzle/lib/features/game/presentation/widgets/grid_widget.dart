@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
-import 'package:match3_puzzle/core/constants/design_constants.dart';
-import 'package:match3_puzzle/features/game/application/providers/board_provider.dart';
-import 'package:match3_puzzle/features/game/presentation/widgets/tile_widget.dart';
+import '../../../../core/constants/design_constants.dart';
+import '../../application/providers/board_provider.dart';
+import 'tile_widget.dart';
+
+
 
 /// Renders the whole board.
 ///

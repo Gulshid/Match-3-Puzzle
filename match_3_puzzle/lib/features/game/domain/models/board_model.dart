@@ -1,7 +1,8 @@
 import 'dart:math';
 
-import 'package:match3_puzzle/features/game/domain/enums/tile_type.dart';
-import 'package:match3_puzzle/features/game/domain/models/tile_model.dart';
+import '../enums/tile_type.dart';
+import 'tile_model.dart';
+
 
 /// The game board: an immutable rows x cols grid of tiles.
 ///

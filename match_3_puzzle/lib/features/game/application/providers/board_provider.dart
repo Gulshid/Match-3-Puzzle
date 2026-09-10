@@ -1,7 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:match3_puzzle/core/constants/design_constants.dart';
-import 'package:match3_puzzle/features/game/domain/models/board_model.dart';
+import '../../../../core/constants/design_constants.dart';
+import '../../domain/models/board_model.dart';
+
 
 /// Holds and mutates the current [BoardModel].
 ///
