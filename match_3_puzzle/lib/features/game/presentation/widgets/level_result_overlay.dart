@@ -5,23 +5,30 @@ import '../../domain/models/level_config.dart';
 
 /// Full-screen overlay shown when a level is won or lost.
 ///
-/// Intentionally plain (no confetti/stars/animation) — Phase 7 builds
-/// the real result screen with star ratings and a proper level-map
-/// "next level" flow. This just needs to make win/lose visible and
-/// offer a retry.
+/// Phase 7: added a 0-3 star row and split the single "Retry" action
+/// into level-map-aware actions (Retry / Next Level / Level Select),
+/// since the game is no longer a single hardcoded level.
 class LevelResultOverlay extends StatelessWidget {
   const LevelResultOverlay({
     super.key,
     required this.status,
     required this.score,
     required this.targetScore,
+    required this.stars,
+    required this.hasNextLevel,
     required this.onRetry,
+    required this.onNextLevel,
+    required this.onLevelSelect,
   });
 
   final GameStatus status;
   final int score;
   final int targetScore;
+  final int stars;
+  final bool hasNextLevel;
   final VoidCallback onRetry;
+  final VoidCallback onNextLevel;
+  final VoidCallback onLevelSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +63,21 @@ class LevelResultOverlay extends StatelessWidget {
                     color: theme.colorScheme.onSurface,
                   ),
                 ),
+                if (isWin) ...[
+                  SizedBox(height: 10.h),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(3, (i) {
+                      return Icon(
+                        Icons.star,
+                        size: 30.r,
+                        color: i < stars
+                            ? Colors.amber
+                            : theme.colorScheme.onSurface.withOpacity(0.2),
+                      );
+                    }),
+                  ),
+                ],
                 SizedBox(height: 8.h),
                 Text(
                   'Score: $score / $targetScore',
@@ -65,16 +87,39 @@ class LevelResultOverlay extends StatelessWidget {
                   ),
                 ),
                 SizedBox(height: 24.h),
+                if (isWin && hasNextLevel)
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: onNextLevel,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 10.h),
+                        child: Text('Next Level',
+                            style: TextStyle(fontSize: 16.sp)),
+                      ),
+                    ),
+                  )
+                else
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: onRetry,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 10.h),
+                        child:
+                            Text('Retry', style: TextStyle(fontSize: 16.sp)),
+                      ),
+                    ),
+                  ),
+                SizedBox(height: 8.h),
                 SizedBox(
                   width: double.infinity,
-                  child: FilledButton(
-                    onPressed: onRetry,
+                  child: OutlinedButton(
+                    onPressed: onLevelSelect,
                     child: Padding(
                       padding: EdgeInsets.symmetric(vertical: 10.h),
-                      child: Text(
-                        'Retry',
-                        style: TextStyle(fontSize: 16.sp),
-                      ),
+                      child: Text('Level Select',
+                          style: TextStyle(fontSize: 16.sp)),
                     ),
                   ),
                 ),
