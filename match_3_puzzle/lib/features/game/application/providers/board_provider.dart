@@ -1,9 +1,13 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/audio/audio_providers.dart';
+import '../../../../core/audio/sfx.dart';
 import '../../../../core/constants/design_constants.dart';
+import '../../../settings/application/settings_provider.dart';
 import '../../domain/models/board_model.dart';
 import '../../domain/models/level_config.dart';
 import '../../domain/models/tile_model.dart';
@@ -15,16 +19,17 @@ class GameState {
   final LevelConfig level;
   final String? selectedTileId;
   final bool isProcessing;
+  final bool isPaused;
   final int comboCount;
 
   /// True only for the single state update where a swap is being
   /// reverted (no match). GridWidget uses this to pick a bouncier curve
-  /// for that one transition — see Phase 6 notes there.
+  /// for that one transition.
   final bool isInvalidSwapFeedback;
 
   /// Bumped (never reset) whenever a cascade combo reaches 3+ passes,
   /// so a listener (ShakeWidget) can replay a shake purely by diffing
-  /// this value — no separate "consume the event" bookkeeping needed.
+  /// this value.
   final int shakeTrigger;
 
   final int score;
@@ -36,6 +41,7 @@ class GameState {
     required this.level,
     this.selectedTileId,
     this.isProcessing = false,
+    this.isPaused = false,
     this.comboCount = 0,
     this.isInvalidSwapFeedback = false,
     this.shakeTrigger = 0,
@@ -50,6 +56,7 @@ class GameState {
     String? selectedTileId,
     bool clearSelection = false,
     bool? isProcessing,
+    bool? isPaused,
     int? comboCount,
     bool? isInvalidSwapFeedback,
     int? shakeTrigger,
@@ -63,6 +70,7 @@ class GameState {
       selectedTileId:
           clearSelection ? null : (selectedTileId ?? this.selectedTileId),
       isProcessing: isProcessing ?? this.isProcessing,
+      isPaused: isPaused ?? this.isPaused,
       comboCount: comboCount ?? this.comboCount,
       isInvalidSwapFeedback:
           isInvalidSwapFeedback ?? this.isInvalidSwapFeedback,
@@ -78,23 +86,26 @@ class GameState {
 ///
 /// Phase 3: tap-to-select, adjacency-restricted swapping, match detection.
 /// Phase 4: clear -> gravity -> refill -> re-check cascade loop + combo count.
-/// Phase 5: scoring, move limit, win/lose, and a "no possible moves"
-///          auto-reshuffle.
-/// Phase 6: spawn-from-above entry animation for new tiles, an
-///          invalid-swap bounce curve flag, and a big-combo shake trigger.
+/// Phase 5: scoring, move limit, win/lose, "no possible moves" auto-reshuffle.
+/// Phase 6: spawn-from-above entry animation, invalid-swap bounce flag,
+///          big-combo shake trigger.
+/// Phase 7: takes its starting [LevelConfig] directly, supports pause/resume.
+/// Phase 8: plays SFX + haptics at each of those same event points,
+///          gated by the user's settings toggles (hence the [Ref]).
 class GameNotifier extends StateNotifier<GameState> {
-  GameNotifier()
+  GameNotifier(this._ref, LevelConfig level)
       : super(
           GameState(
             board: BoardModel.generateRandom(
               rows: BoardConfig.rows,
               cols: BoardConfig.cols,
             ),
-            level: LevelConfig.defaultLevel,
-            movesRemaining: LevelConfig.defaultLevel.moveLimit,
+            level: level,
+            movesRemaining: level.moveLimit,
           ),
         );
 
+  final Ref _ref;
   final Random _random = Random();
 
   static const _swapDuration = Duration(milliseconds: 220);
@@ -102,9 +113,7 @@ class GameNotifier extends StateNotifier<GameState> {
   static const _cascadeStepDuration = Duration(milliseconds: 260);
 
   /// One frame's worth of delay so the "entry" (spawn-above) board
-  /// actually paints before we jump to the settled positions — without
-  /// this, Flutter can coalesce both state updates into a single frame
-  /// and the drop-in animation never has a starting point to animate from.
+  /// actually paints before we jump to the settled positions.
   static const _spawnEntryFrameDelay = Duration(milliseconds: 32);
 
   static const int _bigComboThreshold = 3;
@@ -123,8 +132,16 @@ class GameNotifier extends StateNotifier<GameState> {
     );
   }
 
+  void pause() {
+    if (state.status != GameStatus.playing) return;
+    state = state.copyWith(isPaused: true);
+  }
+
+  void resume() => state = state.copyWith(isPaused: false);
+
   Future<void> onTileTapped(TileModel tile) async {
-    if (state.isProcessing || state.status != GameStatus.playing) return;
+    if (state.isProcessing || state.isPaused) return;
+    if (state.status != GameStatus.playing) return;
 
     final selectedId = state.selectedTileId;
     if (selectedId == null) {
@@ -173,8 +190,9 @@ class GameNotifier extends StateNotifier<GameState> {
     final matches = MatchDetector.findMatches(swappedBoard);
 
     if (matches.isEmpty) {
-      // Invalid move: show the swap briefly, then bounce back with a
-      // bouncier curve (GridWidget reads isInvalidSwapFeedback for this).
+      _playSfx(SfxType.invalidMove);
+      _haptic(HapticFeedback.selectionClick);
+
       state = state.copyWith(board: swappedBoard);
       await Future.delayed(_swapDuration);
       state = state.copyWith(
@@ -185,7 +203,9 @@ class GameNotifier extends StateNotifier<GameState> {
       return;
     }
 
-    // Valid move: consumes one of the level's move budget.
+    _playSfx(SfxType.swap);
+    _haptic(HapticFeedback.lightImpact);
+
     state = state.copyWith(
       board: swappedBoard,
       movesRemaining: state.movesRemaining - 1,
@@ -193,7 +213,7 @@ class GameNotifier extends StateNotifier<GameState> {
     await Future.delayed(_swapDuration);
 
     await _resolveCascade();
-    await _checkWinLose();
+    _checkWinLose();
 
     if (state.status == GameStatus.playing) {
       await _reshuffleIfStuck();
@@ -203,7 +223,7 @@ class GameNotifier extends StateNotifier<GameState> {
   }
 
   /// Repeatedly: mark matches -> score them -> clear -> gravity ->
-  /// refill (with a spawn-from-above entry animation) -> re-check.
+  /// refill (spawn-from-above) -> re-check.
   Future<void> _resolveCascade() async {
     var combo = 0;
 
@@ -213,6 +233,9 @@ class GameNotifier extends StateNotifier<GameState> {
 
       combo++;
       final pointsThisPass = matches.length * _pointsPerTile * combo;
+
+      _playSfx(combo > 1 ? SfxType.combo : SfxType.match);
+      _haptic(HapticFeedback.mediumImpact);
 
       state = state.copyWith(
         board: state.board.markMatched(matches),
@@ -225,8 +248,6 @@ class GameNotifier extends StateNotifier<GameState> {
       final fallen = cleared.applyGravity();
       final refilled = fallen.refill(_random);
 
-      // Phase 6: place new tiles above the board first, then let them
-      // animate down to their real positions on the next state update.
       final entryBoard = _withSpawnEntryOffsets(fallen, refilled);
       state = state.copyWith(board: entryBoard);
       await Future.delayed(_spawnEntryFrameDelay);
@@ -240,12 +261,6 @@ class GameNotifier extends StateNotifier<GameState> {
     }
   }
 
-  /// For every cell that was empty in [before] and now holds a tile in
-  /// [after], returns a board where that tile's *visual* row (used only
-  /// by GridWidget for positioning) is pushed above the board, stacked
-  /// in column order. The grid's logical position (its index in
-  /// `board.grid`, which is what match/gravity logic reads) is
-  /// unchanged — only the animation start point differs.
   BoardModel _withSpawnEntryOffsets(BoardModel before, BoardModel after) {
     var result = after;
 
@@ -255,30 +270,33 @@ class GameNotifier extends StateNotifier<GameState> {
         if (before.tileAt(row, col) == null) {
           newCount++;
         } else {
-          break; // gravity guarantees empties are a contiguous top run
+          break;
         }
       }
 
       for (var row = 0; row < newCount; row++) {
         final tile = after.tileAt(row, col);
         if (tile == null) continue;
-        result = result.withTile(row, col, tile.copyWith(row: row - newCount));
+        result =
+            result.withTile(row, col, tile.copyWith(row: row - newCount));
       }
     }
 
     return result;
   }
 
-  Future<void> _checkWinLose() async {
+  void _checkWinLose() {
     if (state.score >= state.level.targetScore) {
       state = state.copyWith(status: GameStatus.won);
+      _playSfx(SfxType.win);
+      _haptic(HapticFeedback.heavyImpact);
     } else if (state.movesRemaining <= 0) {
       state = state.copyWith(status: GameStatus.lost);
+      _playSfx(SfxType.lose);
+      _haptic(HapticFeedback.heavyImpact);
     }
   }
 
-  /// If no adjacent swap on the current board would produce a match,
-  /// silently regenerates the board so the player is never stuck.
   Future<void> _reshuffleIfStuck() async {
     if (_hasAnyPossibleMove(state.board)) return;
 
@@ -315,8 +333,25 @@ class GameNotifier extends StateNotifier<GameState> {
     }
     return false;
   }
+
+  void _playSfx(SfxType sfx) {
+    if (!_ref.read(settingsProvider).soundEnabled) return;
+    _ref.read(audioServiceProvider).playSfx(sfx);
+  }
+
+  void _haptic(Future<void> Function() hapticCall) {
+    if (!_ref.read(settingsProvider).vibrationEnabled) return;
+    hapticCall();
+  }
 }
 
-final gameProvider = StateNotifierProvider<GameNotifier, GameState>(
-  (ref) => GameNotifier(),
+/// `.autoDispose` so leaving a level screen (back to the level map)
+/// discards that attempt's state instead of leaking a GameNotifier per
+/// level for the lifetime of the app. `.family` keyed by [LevelConfig]
+/// gives each level its own isolated game state — safe because
+/// `LevelConfig` instances always come from the same `const` list in
+/// [LevelDefinitions], so identity equality is stable across rebuilds.
+final gameProvider = StateNotifierProvider.autoDispose
+    .family<GameNotifier, GameState, LevelConfig>(
+  (ref, level) => GameNotifier(ref, level),
 );
