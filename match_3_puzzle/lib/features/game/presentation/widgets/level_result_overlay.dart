@@ -37,7 +37,7 @@ class LevelResultOverlay extends StatelessWidget {
 
     return Positioned.fill(
       child: Container(
-        color: Colors.black.withOpacity(0.6),
+        color: Colors.black.withValues(alpha: 0.6),
         child: Center(
           child: Container(
             margin: EdgeInsets.symmetric(horizontal: 32.w),
@@ -73,7 +73,7 @@ class LevelResultOverlay extends StatelessWidget {
                         size: 30.r,
                         color: i < stars
                             ? Colors.amber
-                            : theme.colorScheme.onSurface.withOpacity(0.2),
+                            : theme.colorScheme.onSurface.withValues(alpha: 0.2),
                       );
                     }),
                   ),
@@ -83,7 +83,7 @@ class LevelResultOverlay extends StatelessWidget {
                   'Score: $score / $targetScore',
                   style: TextStyle(
                     fontSize: 16.sp,
-                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                   ),
                 ),
                 SizedBox(height: 24.h),

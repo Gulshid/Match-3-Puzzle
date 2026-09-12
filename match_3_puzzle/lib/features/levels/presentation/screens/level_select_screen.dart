@@ -106,7 +106,7 @@ class _LevelTile extends StatelessWidget {
                       color: i < stars
                           ? Colors.amber
                           : theme.colorScheme.onPrimaryContainer
-                              .withOpacity(0.25),
+                              .withValues(alpha: 0.25),
                     );
                   }),
                 ),

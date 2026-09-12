@@ -57,7 +57,7 @@ class TileWidget extends StatelessWidget {
                 height: size,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: tile.type.color.withOpacity(0.45),
+                  color: tile.type.color.withValues(alpha: 0.45),
                 ),
               ),
             ),
@@ -80,7 +80,7 @@ class TileWidget extends StatelessWidget {
                         : null,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
+                        color: Colors.black.withValues(alpha: 0.15),
                         blurRadius: 3.r,
                         offset: Offset(0, 2.r),
                       ),
