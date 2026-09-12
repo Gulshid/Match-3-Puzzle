@@ -8,6 +8,7 @@ import '../../../../core/audio/audio_providers.dart';
 import '../../../../core/audio/sfx.dart';
 import '../../../../core/constants/design_constants.dart';
 import '../../../settings/application/settings_provider.dart';
+import '../../domain/enums/tile_type.dart';
 import '../../domain/models/board_model.dart';
 import '../../domain/models/level_config.dart';
 import '../../domain/models/tile_model.dart';
@@ -21,20 +22,15 @@ class GameState {
   final bool isProcessing;
   final bool isPaused;
   final int comboCount;
-
-  /// True only for the single state update where a swap is being
-  /// reverted (no match). GridWidget uses this to pick a bouncier curve
-  /// for that one transition.
   final bool isInvalidSwapFeedback;
-
-  /// Bumped (never reset) whenever a cascade combo reaches 3+ passes,
-  /// so a listener (ShakeWidget) can replay a shake purely by diffing
-  /// this value.
   final int shakeTrigger;
-
   final int score;
   final int movesRemaining;
   final GameStatus status;
+
+  /// Phase 9: tile id that just activated as a special — widgets use
+  /// this to show a momentary flash before the effect fires.
+  final String? activatingSpecialId;
 
   const GameState({
     required this.board,
@@ -48,6 +44,7 @@ class GameState {
     this.score = 0,
     required this.movesRemaining,
     this.status = GameStatus.playing,
+    this.activatingSpecialId,
   });
 
   GameState copyWith({
@@ -63,6 +60,8 @@ class GameState {
     int? score,
     int? movesRemaining,
     GameStatus? status,
+    String? activatingSpecialId,
+    bool clearActivatingSpecial = false,
   }) {
     return GameState(
       board: board ?? this.board,
@@ -78,27 +77,27 @@ class GameState {
       score: score ?? this.score,
       movesRemaining: movesRemaining ?? this.movesRemaining,
       status: status ?? this.status,
+      activatingSpecialId: clearActivatingSpecial
+          ? null
+          : (activatingSpecialId ?? this.activatingSpecialId),
     );
   }
 }
 
-/// Owns the board and all swap/match/cascade/scoring logic.
+/// Owns the board and all swap/match/cascade/scoring/special-tile logic.
 ///
-/// Phase 3: tap-to-select, adjacency-restricted swapping, match detection.
-/// Phase 4: clear -> gravity -> refill -> re-check cascade loop + combo count.
-/// Phase 5: scoring, move limit, win/lose, "no possible moves" auto-reshuffle.
-/// Phase 6: spawn-from-above entry animation, invalid-swap bounce flag,
-///          big-combo shake trigger.
-/// Phase 7: takes its starting [LevelConfig] directly, supports pause/resume.
-/// Phase 8: plays SFX + haptics at each of those same event points,
-///          gated by the user's settings toggles (hence the [Ref]).
+/// Phase 9: special tile creation on match-4/5/L-T, activation on swap,
+///          combo effects for two specials swapped together.
+/// Phase 10: [LevelConfig] now sourced from JSON (via [LevelLoader]),
+///           obstacle tiles (ice, crates) participate in match logic.
 class GameNotifier extends StateNotifier<GameState> {
   GameNotifier(this._ref, LevelConfig level)
       : super(
           GameState(
             board: BoardModel.generateRandom(
-              rows: BoardConfig.rows,
-              cols: BoardConfig.cols,
+              rows: level.rows,
+              cols: level.cols,
+              obstacles: level.obstacles,
             ),
             level: level,
             movesRemaining: level.moveLimit,
@@ -111,21 +110,23 @@ class GameNotifier extends StateNotifier<GameState> {
   static const _swapDuration = Duration(milliseconds: 220);
   static const _matchPauseDuration = Duration(milliseconds: 200);
   static const _cascadeStepDuration = Duration(milliseconds: 260);
-
-  /// One frame's worth of delay so the "entry" (spawn-above) board
-  /// actually paints before we jump to the settled positions.
   static const _spawnEntryFrameDelay = Duration(milliseconds: 32);
+  static const _specialFlashDuration = Duration(milliseconds: 320);
 
   static const int _bigComboThreshold = 3;
   static const int _pointsPerTile = 10;
+  static const int _specialBonus = 50;
+
+  // ─── Public API ───────────────────────────────────────────────────
 
   void newGame({LevelConfig? level}) {
     final newLevel = level ?? state.level;
     state = GameState(
       board: BoardModel.generateRandom(
-        rows: BoardConfig.rows,
-        cols: BoardConfig.cols,
+        rows: newLevel.rows,
+        cols: newLevel.cols,
         random: _random,
+        obstacles: newLevel.obstacles,
       ),
       level: newLevel,
       movesRemaining: newLevel.moveLimit,
@@ -163,20 +164,7 @@ class GameNotifier extends StateNotifier<GameState> {
     await _trySwap(selectedTile, tile);
   }
 
-  TileModel? _findTileById(String id) {
-    for (final row in state.board.grid) {
-      for (final t in row) {
-        if (t?.id == id) return t;
-      }
-    }
-    return null;
-  }
-
-  bool _isAdjacent(TileModel a, TileModel b) {
-    final dRow = (a.row - b.row).abs();
-    final dCol = (a.col - b.col).abs();
-    return (dRow == 1 && dCol == 0) || (dRow == 0 && dCol == 1);
-  }
+  // ─── Core swap logic ──────────────────────────────────────────────
 
   Future<void> _trySwap(TileModel a, TileModel b) async {
     state = state.copyWith(
@@ -184,9 +172,27 @@ class GameNotifier extends StateNotifier<GameState> {
       clearSelection: true,
       comboCount: 0,
       isInvalidSwapFeedback: false,
+      clearActivatingSpecial: true,
     );
 
     final swappedBoard = state.board.swapTiles(a.row, a.col, b.row, b.col);
+
+    // Phase 9: if either tile is a special, activate it immediately
+    // regardless of whether the swap creates a match.
+    final aSpecial = a.isSpecial;
+    final bSpecial = b.isSpecial;
+
+    if (aSpecial || bSpecial) {
+      await _handleSpecialSwap(swappedBoard, a, b);
+      state = state.copyWith(
+        movesRemaining: state.movesRemaining - 1,
+        isProcessing: false,
+      );
+      _checkWinLose();
+      return;
+    }
+
+    // Normal swap path.
     final matches = MatchDetector.findMatches(swappedBoard);
 
     if (matches.isEmpty) {
@@ -222,29 +228,125 @@ class GameNotifier extends StateNotifier<GameState> {
     state = state.copyWith(isProcessing: false);
   }
 
-  /// Repeatedly: mark matches -> score them -> clear -> gravity ->
-  /// refill (spawn-from-above) -> re-check.
+  // ─── Phase 9: Special tile activation ─────────────────────────────
+
+  /// Handles a swap where at least one tile is special.
+  /// Two specials swapped together combine their effects.
+  Future<void> _handleSpecialSwap(
+    BoardModel swappedBoard,
+    TileModel a,
+    TileModel b,
+  ) async {
+    state = state.copyWith(board: swappedBoard);
+    await Future.delayed(_swapDuration);
+
+    var board = swappedBoard;
+    var bonusScore = 0;
+    var extraPositions = <Point<int>>{};
+
+    // Flash the activating tile(s).
+    if (a.isSpecial) {
+      state = state.copyWith(activatingSpecialId: a.id);
+      _playSfx(_sfxForSpecial(a.specialType!));
+    }
+    if (b.isSpecial) {
+      state = state.copyWith(activatingSpecialId: b.id);
+      _playSfx(_sfxForSpecial(b.specialType!));
+    }
+    await Future.delayed(_specialFlashDuration);
+
+    // Collect positions from both specials.
+    if (a.isSpecial) {
+      final pos = board.activateSpecialAt(
+        a.row, a.col, board,
+        swappedWithType: b.type,
+      );
+      extraPositions.addAll(pos);
+      bonusScore += _specialBonus;
+    }
+    if (b.isSpecial) {
+      final pos = board.activateSpecialAt(
+        b.row, b.col, board,
+        swappedWithType: a.type,
+      );
+      extraPositions.addAll(pos);
+      bonusScore += _specialBonus;
+    }
+
+    if (extraPositions.isNotEmpty) {
+      board = board.markMatched(extraPositions);
+      state = state.copyWith(
+        board: board,
+        score: state.score + extraPositions.length * _pointsPerTile + bonusScore,
+        clearActivatingSpecial: true,
+      );
+      await Future.delayed(_matchPauseDuration);
+
+      board = board.clearMatched();
+      board = board.clearAdjacentCrates(extraPositions);
+      board = board.applyGravity();
+      final entryBoard = _withSpawnEntryOffsets(board, board.refill(_random));
+      state = state.copyWith(board: entryBoard);
+      await Future.delayed(_spawnEntryFrameDelay);
+      board = board.refill(_random);
+      state = state.copyWith(board: board);
+      await Future.delayed(_cascadeStepDuration);
+    }
+
+    // Continue with regular cascade (chain reactions).
+    await _resolveCascade();
+    _checkWinLose();
+  }
+
+  // ─── Cascade loop ─────────────────────────────────────────────────
+
   Future<void> _resolveCascade() async {
     var combo = 0;
 
     while (true) {
-      final matches = MatchDetector.findMatches(state.board);
-      if (matches.isEmpty) break;
+      final matchResults = MatchDetector.findMatchResults(state.board);
+      if (matchResults.isEmpty) break;
 
       combo++;
-      final pointsThisPass = matches.length * _pointsPerTile * combo;
+      final allPositions = <Point<int>>{};
+      for (final r in matchResults) {
+        allPositions.addAll(r.positions);
+      }
+
+      final pointsThisPass =
+          allPositions.length * _pointsPerTile * combo;
 
       _playSfx(combo > 1 ? SfxType.combo : SfxType.match);
       _haptic(HapticFeedback.mediumImpact);
 
+      // Mark matched tiles.
+      var board = state.board.markMatched(allPositions);
+
+      // Phase 9: spawn special tiles at designated pivot cells
+      // (before clearing, so the spawned tile animates into place).
+      for (final result in matchResults) {
+        if (result.specialSpawnAt != null && result.specialType != null) {
+          final p = result.specialSpawnAt!;
+          board = board.spawnSpecialAt(
+            p.y, // row
+            p.x, // col
+            result.specialType!,
+            stripeDirection: result.stripeDirection,
+          );
+          _playSfx(SfxType.specialCreated);
+        }
+      }
+
       state = state.copyWith(
-        board: state.board.markMatched(matches),
+        board: board,
         comboCount: combo,
         score: state.score + pointsThisPass,
       );
       await Future.delayed(_matchPauseDuration);
 
-      final cleared = state.board.clearMatched();
+      // Phase 10: clear matched tiles + break adjacent obstacles.
+      var cleared = state.board.clearMatched();
+      cleared = cleared.clearAdjacentCrates(allPositions);
       final fallen = cleared.applyGravity();
       final refilled = fallen.refill(_random);
 
@@ -260,6 +362,8 @@ class GameNotifier extends StateNotifier<GameState> {
       state = state.copyWith(shakeTrigger: state.shakeTrigger + 1);
     }
   }
+
+  // ─── Helpers ──────────────────────────────────────────────────────
 
   BoardModel _withSpawnEntryOffsets(BoardModel before, BoardModel after) {
     var result = after;
@@ -305,12 +409,14 @@ class GameNotifier extends StateNotifier<GameState> {
       rows: state.board.rows,
       cols: state.board.cols,
       random: _random,
+      obstacles: state.level.obstacles,
     );
     while (!_hasAnyPossibleMove(candidate) && attempts < 10) {
       candidate = BoardModel.generateRandom(
         rows: state.board.rows,
         cols: state.board.cols,
         random: _random,
+        obstacles: state.level.obstacles,
       );
       attempts++;
     }
@@ -334,6 +440,21 @@ class GameNotifier extends StateNotifier<GameState> {
     return false;
   }
 
+  TileModel? _findTileById(String id) {
+    for (final row in state.board.grid) {
+      for (final t in row) {
+        if (t?.id == id) return t;
+      }
+    }
+    return null;
+  }
+
+  bool _isAdjacent(TileModel a, TileModel b) {
+    final dRow = (a.row - b.row).abs();
+    final dCol = (a.col - b.col).abs();
+    return (dRow == 1 && dCol == 0) || (dRow == 0 && dCol == 1);
+  }
+
   void _playSfx(SfxType sfx) {
     if (!_ref.read(settingsProvider).soundEnabled) return;
     _ref.read(audioServiceProvider).playSfx(sfx);
@@ -343,14 +464,19 @@ class GameNotifier extends StateNotifier<GameState> {
     if (!_ref.read(settingsProvider).vibrationEnabled) return;
     hapticCall();
   }
+
+  SfxType _sfxForSpecial(SpecialTileType type) {
+    switch (type) {
+      case SpecialTileType.striped:
+        return SfxType.striped;
+      case SpecialTileType.wrapped:
+        return SfxType.wrapped;
+      case SpecialTileType.colorBomb:
+        return SfxType.colorBomb;
+    }
+  }
 }
 
-/// `.autoDispose` so leaving a level screen (back to the level map)
-/// discards that attempt's state instead of leaking a GameNotifier per
-/// level for the lifetime of the app. `.family` keyed by [LevelConfig]
-/// gives each level its own isolated game state — safe because
-/// `LevelConfig` instances always come from the same `const` list in
-/// [LevelDefinitions], so identity equality is stable across rebuilds.
 final gameProvider = StateNotifierProvider.autoDispose
     .family<GameNotifier, GameState, LevelConfig>(
   (ref, level) => GameNotifier(ref, level),
