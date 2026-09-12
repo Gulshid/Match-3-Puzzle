@@ -2,7 +2,6 @@ import 'dart:math';
 
 import '../enums/tile_type.dart';
 import '../models/board_model.dart';
-import '../models/tile_model.dart';
 
 /// Describes a match group: which cells are matched, how many tiles were
 /// in the run that formed it, and what special tile (if any) should be

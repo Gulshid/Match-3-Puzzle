@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/audio/audio_providers.dart';
 import '../../../../core/audio/sfx.dart';
-import '../../../../core/constants/design_constants.dart';
 import '../../../settings/application/settings_provider.dart';
 import '../../domain/enums/tile_type.dart';
 import '../../domain/models/board_model.dart';
