@@ -1,11 +1,14 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
-/// Simple pause overlay: Resume or Quit to the level map.
-///
-/// Kept as a full overlay (like [LevelResultOverlay]) rather than a
-/// Flutter `Dialog`, so it composes the same way inside GameScreen's
-/// Stack without an extra navigator route.
+import '../../../../core/theme/app_colors.dart';
+import '../../../../shared/widgets/glass_card.dart';
+import '../../../../shared/widgets/glossy_button.dart';
+import '../../../../shared/widgets/pop_in.dart';
+
+/// Full-screen pause overlay: frosted-glass backdrop blur behind a
+/// glossy 3D pop-in card with Resume / Quit actions.
 class PauseOverlay extends StatelessWidget {
   const PauseOverlay({
     super.key,
@@ -21,54 +24,77 @@ class PauseOverlay extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Positioned.fill(
-      child: Container(
-        color: Colors.black.withValues(alpha: 0.6),
-        child: Center(
-          child: Container(
-            margin: EdgeInsets.symmetric(horizontal: 40.w),
-            padding: EdgeInsets.symmetric(horizontal: 28.w, vertical: 28.h),
-            decoration: BoxDecoration(
-              color: theme.scaffoldBackgroundColor,
-              borderRadius: BorderRadius.circular(20.r),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.pause_circle_filled,
-                    size: 48.r, color: theme.colorScheme.primary),
-                SizedBox(height: 12.h),
-                Text(
-                  'Paused',
-                  style: TextStyle(
-                    fontSize: 20.sp,
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+        child: Container(
+          color: Colors.black.withOpacity(0.45),
+          child: Center(
+            child: PopIn(
+              child: GlassCard(
+                radius: 26,
+                opacity: 0.22,
+                padding: EdgeInsets.symmetric(horizontal: 28.w, vertical: 28.h),
+                child: SizedBox(
+                  width: 260.w,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: EdgeInsets.all(14.r),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: const LinearGradient(
+                            colors: [AppColors.candyBlue, AppColors.candyPurple],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.candyPurple.withOpacity(0.5),
+                              blurRadius: 18,
+                            ),
+                          ],
+                        ),
+                        child: Icon(Icons.pause_rounded, size: 34.r, color: Colors.white),
+                      ),
+                      SizedBox(height: 14.h),
+                      Text(
+                        'Paused',
+                        style: TextStyle(
+                          fontSize: 22.sp,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      SizedBox(height: 22.h),
+                      SizedBox(
+                        width: double.infinity,
+                        child: GlossyButton(
+                          onPressed: onResume,
+                          color: AppColors.candyMint,
+                          child: Text('Resume',
+                              style: TextStyle(
+                                  fontSize: 16.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white)),
+                        ),
+                      ),
+                      SizedBox(height: 10.h),
+                      SizedBox(
+                        width: double.infinity,
+                        child: GlossyButton(
+                          onPressed: onQuit,
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          baseColor: Colors.black.withOpacity(0.3),
+                          child: Text('Quit to Levels',
+                              style: TextStyle(
+                                  fontSize: 15.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: theme.colorScheme.onSurface)),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                SizedBox(height: 20.h),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: onResume,
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 10.h),
-                      child: Text('Resume', style: TextStyle(fontSize: 16.sp)),
-                    ),
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: onQuit,
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 10.h),
-                      child: Text('Quit to Levels',
-                          style: TextStyle(fontSize: 16.sp)),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
