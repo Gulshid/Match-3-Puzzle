@@ -1,21 +1,26 @@
-
 import '../enums/tile_type.dart';
 
 /// A single tile on the board.
 ///
-/// `row`/`col` are the tile's *current* logical position — they change as
-/// tiles swap and fall, but `id` stays fixed so animations (Phase 6) can
-/// track a specific tile across state updates.
+/// Phase 9 additions:
+/// - [specialType]: null for a normal tile; set to one of the
+///   [SpecialTileType] variants when created from a big match.
+/// - [stripeDirection]: only meaningful when [specialType] is
+///   [SpecialTileType.striped]; records whether the stripe fires
+///   horizontally or vertically.
+/// - [isActivating]: set true for one state update right before the
+///   special tile's effect fires, so the widget can play a pop/flash.
 class TileModel {
   final String id;
   final TileType type;
   final int row;
   final int col;
-
-  /// Set true when this tile has been matched and is pending removal.
-  /// Not used for match-detection logic itself (that's Phase 3), just for
-  /// marking state between "matched" and "cleared".
   final bool isMatched;
+
+  // Phase 9 fields
+  final SpecialTileType? specialType;
+  final StripeDirection? stripeDirection;
+  final bool isActivating;
 
   const TileModel({
     required this.id,
@@ -23,7 +28,12 @@ class TileModel {
     required this.row,
     required this.col,
     this.isMatched = false,
+    this.specialType,
+    this.stripeDirection,
+    this.isActivating = false,
   });
+
+  bool get isSpecial => specialType != null;
 
   TileModel copyWith({
     String? id,
@@ -31,6 +41,10 @@ class TileModel {
     int? row,
     int? col,
     bool? isMatched,
+    SpecialTileType? specialType,
+    bool clearSpecial = false,
+    StripeDirection? stripeDirection,
+    bool? isActivating,
   }) {
     return TileModel(
       id: id ?? this.id,
@@ -38,6 +52,11 @@ class TileModel {
       row: row ?? this.row,
       col: col ?? this.col,
       isMatched: isMatched ?? this.isMatched,
+      specialType: clearSpecial ? null : (specialType ?? this.specialType),
+      stripeDirection: clearSpecial
+          ? null
+          : (stripeDirection ?? this.stripeDirection),
+      isActivating: isActivating ?? this.isActivating,
     );
   }
 
@@ -48,5 +67,6 @@ class TileModel {
   int get hashCode => id.hashCode;
 
   @override
-  String toString() => 'Tile($id, $type, r:$row, c:$col)';
+  String toString() =>
+      'Tile($id, $type${specialType != null ? ', $specialType' : ''}, r:$row, c:$col)';
 }
