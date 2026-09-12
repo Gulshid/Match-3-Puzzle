@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 /// The set of tile "colors"/kinds a normal tile can be.
 ///
-/// Special tiles (striped, wrapped, color bomb) are added in Phase 9 —
-/// keeping this enum to plain colors for now keeps match-detection simple.
+/// Phase 9 adds [SpecialTileType] below — kept separate so match-detection
+/// logic (which only ever sees normal tile types) never needs to change.
 enum TileType { red, blue, green, yellow, purple, orange }
 
 extension TileTypeX on TileType {
@@ -41,3 +41,40 @@ extension TileTypeX on TileType {
     }
   }
 }
+
+/// Phase 9: Special tile variants created from bigger matches.
+///
+/// - [striped] — created from a match-4. Direction (H/V) is stored on
+///   the tile itself. Clears its entire row or column when activated.
+/// - [wrapped] — created from an L/T-shaped match. Clears a 3×3 area
+///   centred on itself when activated (twice: once on swap, once on clear).
+/// - [colorBomb] — created from a match-5. Clears every tile of the color
+///   it is swapped with (or a random color if activated alone).
+enum SpecialTileType { striped, wrapped, colorBomb }
+
+extension SpecialTileTypeX on SpecialTileType {
+  Color get overlayColor {
+    switch (this) {
+      case SpecialTileType.striped:
+        return Colors.white.withOpacity(0.35);
+      case SpecialTileType.wrapped:
+        return Colors.white.withOpacity(0.25);
+      case SpecialTileType.colorBomb:
+        return Colors.white.withOpacity(0.15);
+    }
+  }
+
+  IconData get overlayIcon {
+    switch (this) {
+      case SpecialTileType.striped:
+        return Icons.more_horiz;
+      case SpecialTileType.wrapped:
+        return Icons.all_inclusive;
+      case SpecialTileType.colorBomb:
+        return Icons.blur_circular;
+    }
+  }
+}
+
+/// Stripe direction for [SpecialTileType.striped] tiles.
+enum StripeDirection { horizontal, vertical }
