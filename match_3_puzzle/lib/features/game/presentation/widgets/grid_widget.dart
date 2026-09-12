@@ -7,28 +7,14 @@ import '../../application/providers/board_provider.dart';
 import '../../domain/models/level_config.dart';
 import 'tile_widget.dart';
 
-/// Renders the whole board for [level]'s game state.
+/// Renders the full game board including normal tiles, special tiles,
+/// ice overlays, and crate blockers.
 ///
-/// Uses its own inner [LayoutBuilder] (separate from the app-level one
-/// in main.dart, which only picks the ScreenUtil design size) to fit a
-/// square grid of tiles into whatever space its parent gives it —
-/// phone, tablet, split-screen, or desktop window, all handled the
-/// same way.
+/// Phase 9: passes [isActivating] to [TileWidget] so the one tile that
+/// is about to fire its special effect gets a white flash.
 ///
-/// Phase 3/4: each tile is wired to [GameNotifier.onTileTapped], and
-/// `Positioned` was upgraded to `AnimatedPositioned` (keyed by
-/// `tile.id`) so swaps, bounce-backs, and post-cascade falls all
-/// animate to their new grid position instead of popping. Null cells
-/// (briefly empty mid-cascade) are simply skipped.
-///
-/// Phase 6: the curve switches to a bouncier `easeOutBack` for the one
-/// transition where an invalid swap reverts (`isInvalidSwapFeedback`).
-/// `Clip.none` lets new tiles (spawned above the board — see
-/// `_withSpawnEntryOffsets` in the notifier) render before they've
-/// animated into view.
-///
-/// Phase 7: takes [level] so it can read the right `gameProvider(level)`
-/// instance now that the provider is a family keyed by level.
+/// Phase 10: renders [CrateTileWidget] in cells where the board has a
+/// crate obstacle, and [TileWidget] with [obstacleType] set for ice cells.
 class GridWidget extends ConsumerWidget {
   const GridWidget({super.key, required this.level});
 
@@ -67,6 +53,29 @@ class GridWidget extends ConsumerWidget {
             child: Stack(
               clipBehavior: Clip.none,
               children: [
+                // ── Background cell slots ──────────────────────────
+                for (var row = 0; row < board.rows; row++)
+                  for (var col = 0; col < board.cols; col++)
+                    Positioned(
+                      left: col * (tileSize + spacing),
+                      top: row * (tileSize + spacing),
+                      width: tileSize,
+                      height: tileSize,
+                      child: _CellBackground(size: tileSize),
+                    ),
+
+                // ── Phase 10: Crate obstacles ──────────────────────
+                for (final entry in board.obstacles.entries)
+                  if (entry.value == ObstacleType.crate)
+                    Positioned(
+                      left: entry.key.x * (tileSize + spacing),
+                      top: entry.key.y * (tileSize + spacing),
+                      width: tileSize,
+                      height: tileSize,
+                      child: CrateTileWidget(size: tileSize),
+                    ),
+
+                // ── Tiles ──────────────────────────────────────────
                 for (final row in board.grid)
                   for (final tile in row)
                     if (tile != null)
@@ -82,6 +91,11 @@ class GridWidget extends ConsumerWidget {
                           tile: tile,
                           size: tileSize,
                           isSelected: gameState.selectedTileId == tile.id,
+                          // Phase 9: flash when this tile is activating.
+                          isActivating:
+                              gameState.activatingSpecialId == tile.id,
+                          // Phase 10: pass ice overlay info.
+                          obstacleType: board.obstacleAt(tile.row, tile.col),
                           onTap: () => ref
                               .read(gameProvider(level).notifier)
                               .onTileTapped(tile),
@@ -92,6 +106,25 @@ class GridWidget extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Subtle dark rounded background drawn behind every cell — gives the
+/// board a "slot" feel so empty spaces during cascades are visible.
+class _CellBackground extends StatelessWidget {
+  const _CellBackground({required this.size});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(BoardConfig.tileRadius.r),
+      ),
     );
   }
 }
