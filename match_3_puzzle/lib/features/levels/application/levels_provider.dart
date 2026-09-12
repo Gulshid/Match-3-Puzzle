@@ -1,25 +1,71 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/constants/level_definitions.dart';
 import '../domain/level_progress.dart';
 
-/// Tracks unlock/star/best-score progress for every level in
-/// [LevelDefinitions.all]. Level 1 starts unlocked; every other level
-/// unlocks the moment the previous one is completed.
+/// Phase 10: thin async wrapper that exposes [SharedPreferences] to
+/// providers that need it. Loaded once at startup via [ProviderScope]'s
+/// `overrides` parameter in main.dart.
+final sharedPreferencesProvider =
+    Provider<SharedPreferences>((ref) => throw UnimplementedError(
+          'Override sharedPreferencesProvider in ProviderScope',
+        ));
+
+/// Phase 10: persistence key for the progress list.
+const _kProgressKey = 'levels_progress_v1';
+
+/// Tracks unlock/star/best-score progress for every level.
+///
+/// Phase 10 changes vs Phase 8:
+/// - Constructor reads saved progress from [SharedPreferences] on init
+///   (via [_load]) so progress survives app restarts.
+/// - [recordResult] persists after updating state (via [_save]).
+/// - Levels are now loaded asynchronously from JSON via [LevelLoader]
+///   (falls back to [LevelDefinitions.all] seamlessly).
 class LevelsNotifier extends StateNotifier<List<LevelProgress>> {
-  LevelsNotifier()
-      : super([
-          for (final level in LevelDefinitions.all)
+  LevelsNotifier(this._prefs) : super(_load(_prefs));
+
+  final SharedPreferences _prefs;
+
+  /// Deserialise saved progress, filling in any missing levels with
+  /// fresh (locked) entries so new levels added to the game don't crash.
+  static List<LevelProgress> _load(SharedPreferences prefs) {
+    final raw = prefs.getString(_kProgressKey);
+    Map<int, LevelProgress> saved = {};
+
+    if (raw != null) {
+      try {
+        final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+        for (final item in list) {
+          final p = LevelProgress.fromJson(item);
+          saved[p.levelId] = p;
+        }
+      } catch (_) {
+        // Corrupted data — start fresh.
+      }
+    }
+
+    return [
+      for (final level in LevelDefinitions.all)
+        saved[level.id] ??
             LevelProgress(levelId: level.id, isUnlocked: level.id == 1),
-        ]);
+    ];
+  }
+
+  Future<void> _save() async {
+    final encoded = jsonEncode(state.map((p) => p.toJson()).toList());
+    await _prefs.setString(_kProgressKey, encoded);
+  }
 
   LevelProgress progressFor(int levelId) =>
       state.firstWhere((p) => p.levelId == levelId);
 
-  /// Computes a 0-3 star rating from how far past the target the final
-  /// score landed, then records it (keeping the best result) and
-  /// unlocks the next level.
-  int recordResult(int levelId, int score, int targetScore) {
+  /// Computes a 0-3 star rating, records the best result, unlocks the
+  /// next level, and persists to [SharedPreferences].
+  Future<int> recordResult(int levelId, int score, int targetScore) async {
     final stars = _starsFor(score, targetScore);
 
     state = [
@@ -36,6 +82,7 @@ class LevelsNotifier extends StateNotifier<List<LevelProgress>> {
           p,
     ];
 
+    await _save();
     return stars;
   }
 
@@ -49,5 +96,5 @@ class LevelsNotifier extends StateNotifier<List<LevelProgress>> {
 
 final levelsProvider =
     StateNotifierProvider<LevelsNotifier, List<LevelProgress>>(
-  (ref) => LevelsNotifier(),
+  (ref) => LevelsNotifier(ref.watch(sharedPreferencesProvider)),
 );
