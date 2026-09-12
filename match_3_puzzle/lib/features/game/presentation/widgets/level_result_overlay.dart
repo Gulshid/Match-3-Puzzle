@@ -1,14 +1,19 @@
+import 'dart:math';
+import 'dart:ui';
+import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
+import '../../../../core/theme/app_colors.dart';
+import '../../../../shared/widgets/glass_card.dart';
+import '../../../../shared/widgets/glossy_button.dart';
+import '../../../../shared/widgets/pop_in.dart';
 import '../../domain/models/level_config.dart';
 
-/// Full-screen overlay shown when a level is won or lost.
-///
-/// Phase 7: added a 0-3 star row and split the single "Retry" action
-/// into level-map-aware actions (Retry / Next Level / Level Select),
-/// since the game is no longer a single hardcoded level.
-class LevelResultOverlay extends StatelessWidget {
+/// Full-screen overlay shown when a level is won or lost — frosted
+/// glass backdrop, a 3D pop-in card, staggered star reveal, and a
+/// confetti burst on a win.
+class LevelResultOverlay extends StatefulWidget {
   const LevelResultOverlay({
     super.key,
     required this.status,
@@ -31,101 +36,200 @@ class LevelResultOverlay extends StatelessWidget {
   final VoidCallback onLevelSelect;
 
   @override
+  State<LevelResultOverlay> createState() => _LevelResultOverlayState();
+}
+
+class _LevelResultOverlayState extends State<LevelResultOverlay> {
+  late final ConfettiController _confetti =
+      ConfettiController(duration: const Duration(seconds: 2));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.status == GameStatus.won) {
+      _confetti.play();
+    }
+  }
+
+  @override
+  void dispose() {
+    _confetti.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final isWin = status == GameStatus.won;
+    final isWin = widget.status == GameStatus.won;
     final theme = Theme.of(context);
 
     return Positioned.fill(
-      child: Container(
-        color: Colors.black.withValues(alpha: 0.6),
-        child: Center(
-          child: Container(
-            margin: EdgeInsets.symmetric(horizontal: 32.w),
-            padding: EdgeInsets.symmetric(horizontal: 28.w, vertical: 28.h),
-            decoration: BoxDecoration(
-              color: theme.scaffoldBackgroundColor,
-              borderRadius: BorderRadius.circular(20.r),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isWin ? Icons.emoji_events : Icons.replay_circle_filled,
-                  size: 56.r,
-                  color: isWin ? Colors.amber : theme.colorScheme.error,
-                ),
-                SizedBox(height: 12.h),
-                Text(
-                  isWin ? 'Level Complete!' : 'Out of Moves',
-                  style: TextStyle(
-                    fontSize: 22.sp,
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
-                if (isWin) ...[
-                  SizedBox(height: 10.h),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(3, (i) {
-                      return Icon(
-                        Icons.star,
-                        size: 30.r,
-                        color: i < stars
-                            ? Colors.amber
-                            : theme.colorScheme.onSurface.withValues(alpha: 0.2),
-                      );
-                    }),
-                  ),
+      child: Stack(
+        alignment: Alignment.topCenter,
+        children: [
+          BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+            child: Container(color: Colors.black.withOpacity(0.5)),
+          ),
+          if (isWin)
+            Align(
+              alignment: Alignment.topCenter,
+              child: ConfettiWidget(
+                confettiController: _confetti,
+                blastDirection: pi / 2,
+                blastDirectionality: BlastDirectionality.explosive,
+                numberOfParticles: 24,
+                maxBlastForce: 22,
+                minBlastForce: 8,
+                gravity: 0.25,
+                shouldLoop: false,
+                colors: const [
+                  AppColors.candyPink,
+                  AppColors.candyBlue,
+                  AppColors.candyMint,
+                  AppColors.candyYellow,
+                  AppColors.candyOrange,
                 ],
-                SizedBox(height: 8.h),
-                Text(
-                  'Score: $score / $targetScore',
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
+          Center(
+            child: PopIn(
+              child: GlassCard(
+                radius: 28,
+                opacity: 0.22,
+                padding: EdgeInsets.symmetric(horizontal: 28.w, vertical: 28.h),
+                child: SizedBox(
+                  width: 280.w,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: EdgeInsets.all(16.r),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: isWin
+                                ? [AppColors.gold, AppColors.candyOrange]
+                                : [Colors.grey.shade600, Colors.grey.shade800],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: (isWin ? AppColors.gold : Colors.black)
+                                  .withOpacity(0.5),
+                              blurRadius: 22,
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          isWin ? Icons.emoji_events_rounded : Icons.refresh_rounded,
+                          size: 40.r,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(height: 14.h),
+                      Text(
+                        isWin ? 'Level Complete!' : 'Out of Moves',
+                        style: TextStyle(
+                          fontSize: 23.sp,
+                          fontWeight: FontWeight.w700,
+                          color: theme.colorScheme.onSurface,
+                        ),
+                      ),
+                      if (isWin) ...[
+                        SizedBox(height: 12.h),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(3, (i) {
+                            return _StaggeredStar(
+                              filled: i < widget.stars,
+                              delay: Duration(milliseconds: 120 * i),
+                            );
+                          }),
+                        ),
+                      ],
+                      SizedBox(height: 10.h),
+                      Text(
+                        'Score: ${widget.score} / ${widget.targetScore}',
+                        style: TextStyle(
+                          fontSize: 16.sp,
+                          color: theme.colorScheme.onSurface.withOpacity(0.75),
+                        ),
+                      ),
+                      SizedBox(height: 24.h),
+                      if (isWin && widget.hasNextLevel)
+                        SizedBox(
+                          width: double.infinity,
+                          child: GlossyButton(
+                            onPressed: widget.onNextLevel,
+                            color: AppColors.candyMint,
+                            child: Text('Next Level',
+                                style: TextStyle(
+                                    fontSize: 16.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white)),
+                          ),
+                        )
+                      else
+                        SizedBox(
+                          width: double.infinity,
+                          child: GlossyButton(
+                            onPressed: widget.onRetry,
+                            color: AppColors.candyPink,
+                            child: Text('Retry',
+                                style: TextStyle(
+                                    fontSize: 16.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white)),
+                          ),
+                        ),
+                      SizedBox(height: 10.h),
+                      SizedBox(
+                        width: double.infinity,
+                        child: GlossyButton(
+                          onPressed: widget.onLevelSelect,
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          baseColor: Colors.black.withOpacity(0.3),
+                          child: Text('Level Select',
+                              style: TextStyle(
+                                  fontSize: 15.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: theme.colorScheme.onSurface)),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                SizedBox(height: 24.h),
-                if (isWin && hasNextLevel)
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: onNextLevel,
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 10.h),
-                        child: Text('Next Level',
-                            style: TextStyle(fontSize: 16.sp)),
-                      ),
-                    ),
-                  )
-                else
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: onRetry,
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 10.h),
-                        child:
-                            Text('Retry', style: TextStyle(fontSize: 16.sp)),
-                      ),
-                    ),
-                  ),
-                SizedBox(height: 8.h),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: onLevelSelect,
-                    child: Padding(
-                      padding: EdgeInsets.symmetric(vertical: 10.h),
-                      child: Text('Level Select',
-                          style: TextStyle(fontSize: 16.sp)),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A single result star that pops in with a delay + spin, for a
+/// cascading reveal across the 3 stars instead of appearing at once.
+class _StaggeredStar extends StatelessWidget {
+  const _StaggeredStar({required this.filled, required this.delay});
+
+  final bool filled;
+  final Duration delay;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 4.w),
+      child: PopIn(
+        delay: delay,
+        child: Icon(
+          Icons.star_rounded,
+          size: 36.r,
+          color: filled
+              ? AppColors.gold
+              : Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
+          shadows: filled
+              ? [Shadow(color: AppColors.gold.withOpacity(0.6), blurRadius: 12)]
+              : null,
         ),
       ),
     );
