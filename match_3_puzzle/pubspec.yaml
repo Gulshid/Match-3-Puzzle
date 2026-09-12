@@ -50,6 +50,10 @@ dependencies:
   # Phase 10: local persistence for level progress + settings
   shared_preferences: ^2.2.3
 
+  # google fonts and confetti
+  google_fonts: ^6.2.1
+  confetti: ^0.8.0
+
 
 dev_dependencies:
   flutter_test:
