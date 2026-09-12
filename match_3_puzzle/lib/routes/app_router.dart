@@ -5,14 +5,19 @@ import '../features/game/presentation/screens/game_screen.dart';
 import '../features/home/presentation/screens/home_screen.dart';
 import '../features/levels/presentation/screens/level_select_screen.dart';
 import '../features/settings/presentation/screens/settings_screen.dart';
+import '../features/splash/presentation/screens/splash_screen.dart';
 
 class AppRouter {
   AppRouter._();
 
   static GoRouter create() {
     return GoRouter(
-      initialLocation: '/',
+      initialLocation: '/splash',
       routes: [
+        GoRoute(
+          path: '/splash',
+          builder: (context, state) => const SplashScreen(),
+        ),
         GoRoute(
           path: '/',
           builder: (context, state) => const HomeScreen(),
