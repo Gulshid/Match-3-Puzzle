@@ -1,0 +1,14 @@
+{
+  "id": 4,
+  "title": "Level 4",
+  "moveLimit": 18,
+  "targetScore": 2200,
+  "rows": 8,
+  "cols": 8,
+  "obstacles": [
+    { "row": 3, "col": 3, "type": "ice" },
+    { "row": 3, "col": 4, "type": "ice" },
+    { "row": 4, "col": 3, "type": "ice" },
+    { "row": 4, "col": 4, "type": "ice" }
+  ]
+}

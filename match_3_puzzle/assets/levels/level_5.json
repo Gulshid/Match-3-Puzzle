@@ -1,0 +1,18 @@
+{
+  "id": 5,
+  "title": "Level 5",
+  "moveLimit": 16,
+  "targetScore": 3000,
+  "rows": 8,
+  "cols": 8,
+  "obstacles": [
+    { "row": 0, "col": 0, "type": "crate" },
+    { "row": 0, "col": 7, "type": "crate" },
+    { "row": 7, "col": 0, "type": "crate" },
+    { "row": 7, "col": 7, "type": "crate" },
+    { "row": 3, "col": 3, "type": "ice" },
+    { "row": 3, "col": 4, "type": "ice" },
+    { "row": 4, "col": 3, "type": "ice" },
+    { "row": 4, "col": 4, "type": "ice" }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": 1,
+  "title": "Level 1",
+  "moveLimit": 20,
+  "targetScore": 800,
+  "rows": 8,
+  "cols": 8,
+  "obstacles": []
+}
