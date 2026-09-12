@@ -59,26 +59,35 @@ class SettingsScreen extends ConsumerWidget {
                 child: GlassCard(
                   radius: 20,
                   padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 6.h),
-                  child: SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    secondary: Container(
-                      padding: EdgeInsets.all(10.r),
-                      decoration: BoxDecoration(
-                        color: t.color.withOpacity(0.22),
-                        borderRadius: BorderRadius.circular(14.r),
+                  // GlassCard's DecoratedBox sits between the Scaffold's
+                  // Material and this tile, which would otherwise hide
+                  // the switch's ink/selection effects — a `Material`
+                  // of type `transparency` gives it its own paint
+                  // surface without covering the glass background.
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      secondary: Container(
+                        padding: EdgeInsets.all(10.r),
+                        decoration: BoxDecoration(
+                          color: t.color.withOpacity(0.22),
+                          borderRadius: BorderRadius.circular(14.r),
+                        ),
+                        child: Icon(t.icon, color: t.color, size: 22.r),
                       ),
-                      child: Icon(t.icon, color: t.color, size: 22.r),
+                      title: Text(t.title,
+                          style: TextStyle(
+                              fontSize: 15.sp,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white)),
+                      subtitle: Text(t.subtitle,
+                          style: TextStyle(
+                              fontSize: 12.sp,
+                              color: Colors.white.withOpacity(0.7))),
+                      value: t.value,
+                      onChanged: t.onChanged,
                     ),
-                    title: Text(t.title,
-                        style: TextStyle(
-                            fontSize: 15.sp,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white)),
-                    subtitle: Text(t.subtitle,
-                        style: TextStyle(
-                            fontSize: 12.sp, color: Colors.white.withOpacity(0.7))),
-                    value: t.value,
-                    onChanged: t.onChanged,
                   ),
                 ),
               );
